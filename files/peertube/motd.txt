@@ -1,0 +1,16 @@
+===============================================================================
+
+Welcome to the Classe À 12 Peertube server.
+
+Deploy: /peertube/deploy.sh <Git remote>
+
+You can also deploy a specific branch or tag using the form "REMOTE#reference".
+
+Examples:
+
+- Deploy the official develop branch:
+    /peertube/deploy.sh https://github.com/Chocobozzz/PeerTube.git#develop
+- Deploy the official v1.2.1 release:
+    /peertube/deploy.sh https://github.com/Chocobozzz/PeerTube.git#v1.2.1
+
+===============================================================================

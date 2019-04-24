@@ -1,0 +1,105 @@
+version: "3.3"
+
+services:
+  reverse-proxy:
+    image: traefik
+    command:
+      - --docker
+      - --acme.email=${PEERTUBE_ADMIN_EMAIL}
+      - --acme.domains=${PEERTUBE_WEBSERVER_HOSTNAME},${SCURIOLUS_WEBSERVER_HOSTNAME}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # So that Traefik can listen to the Docker events
+      - /peertube/traefik/acme.json:/etc/acme.json
+      - /peertube/traefik/traefik.toml:/traefik.toml
+    restart: "always"
+
+  peertube:
+    build:
+      context: ${PEERTUBE_REMOTE_GIT}
+      dockerfile: support/docker/production/Dockerfile.stretch
+      args:
+        NPM_RUN_BUILD_OPTS: "--light-fr"
+    environment:
+      - PEERTUBE_DB_USERNAME
+      - PEERTUBE_DB_PASSWORD
+      - PEERTUBE_WEBSERVER_HOSTNAME
+      - PEERTUBE_WEBSERVER_PORT
+      - PEERTUBE_WEBSERVER_HTTPS
+      - PEERTUBE_TRUST_PROXY
+      - PEERTUBE_SMTP_USERNAME
+      - PEERTUBE_SMTP_PASSWORD
+      - PEERTUBE_SMTP_HOSTNAME
+      - PEERTUBE_SMTP_PORT
+      - PEERTUBE_SMTP_FROM
+      - PEERTUBE_SMTP_TLS
+      - PEERTUBE_SMTP_DISABLE_STARTTLS
+      - PEERTUBE_ADMIN_EMAIL
+      - PEERTUBE_SIGNUP_ENABLED
+      - PEERTUBE_TRANSCODING_ENABLED
+      - PEERTUBE_CONTACT_FORM_ENABLED
+    labels:
+      traefik.enable: "true"
+      traefik.frontend.rule: "Host:${PEERTUBE_WEBSERVER_HOSTNAME}"
+      traefik.port: "9000"
+    volumes:
+      - /peertube/data:/data
+      - /peertube/config:/config
+    depends_on:
+      - postgres
+      - redis
+      - postfix
+    restart: "always"
+
+  postgres:
+    image: postgres:10-alpine
+    environment:
+      POSTGRES_USER: ${PEERTUBE_DB_USERNAME}
+      POSTGRES_PASSWORD: ${PEERTUBE_DB_PASSWORD}
+      POSTGRES_DB: peertube
+    volumes:
+      - /peertube/db:/var/lib/postgresql/data
+    restart: "always"
+    labels:
+      traefik.enable: "false"
+
+  redis:
+    image: redis:4-alpine
+    volumes:
+      - /peertube/redis:/data
+    restart: "always"
+    labels:
+      traefik.enable: "false"
+
+  postfix:
+    image: mwader/postfix-relay
+    environment:
+      - POSTFIX_myhostname=${PEERTUBE_WEBSERVER_HOSTNAME}
+    labels:
+      traefik.enable: "false"
+    restart: "always"
+
+  scuriolus-gunicorn:
+    build:
+      context: ${SCURIOLUS_REMOTE_GIT}
+    environment:
+      SCURIOLUS_AUTH_URL: http://peertube:9000/api/v1/users/me
+      SCURIOLUS_ROOT: /data
+    volumes:
+      - /peertube/scuriolus:/data
+    labels:
+      traefik.enable: "false"
+    restart: "always"
+
+  scuriolus-nginx:
+    image: nginx:1.15
+    volumes:
+      - /peertube/scuriolus:/usr/share/nginx/html
+      - /peertube/nginx.conf:/etc/nginx/conf.d/default.conf
+    labels:
+      traefik.enable: "true"
+      traefik.frontend.rule: "Host:${SCURIOLUS_WEBSERVER_HOSTNAME}"
+      traefik.port: "80"
+    restart: "always"
